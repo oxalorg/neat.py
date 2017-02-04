@@ -49,6 +49,10 @@ class Connection:
 
 
 def cyclic_move(genome, i, o):
+    """
+    Checks if the new link (i --> o) creates a cycle in the
+    given genome.
+    """
     if i == o:
         return True
 
@@ -68,6 +72,9 @@ def cyclic_move(genome, i, o):
 
 
 def mutate(genome):
+    """
+    Mutates the given genome inplace. Returns nothing.
+    """
     STRUCT_MUTATE_RATE = 0.05
     CONN_MUTATE_RATE = 0.02
 
@@ -114,14 +121,20 @@ def act_fn(z):
 
 
 def gen_network(genome):
+    """
+    Given a genome, creates a feed forward nerual network.
+    Returns an ``activate`` function which returns the desired
+    output on the given inputs.
+    """
     layers = create_layers(genome)
 
     def activate(ip):
         net = {v: ip[i] for i, v in enumerate(genome.inputs)}
-        # layers[1:] removes the starting layer from the iteration
+
+        # Don't include input layer for iteration
+        # since we already have the required values for i/p layer
         for layer in layers[1:]:
             for node in layer:
-                # print(net)
                 # find all nodes on the other side of in_links
                 # if the connection is enabled, add the net output
                 # of the other node multiplied by connection wt
@@ -130,7 +143,7 @@ def gen_network(genome):
                     if e:
                         net_node.append(w * net[n])
                 net[node] = act_fn(sum(net_node))
-            
+
         op = [net.get(out, 0) for out in genome.outputs]
         return op
 
@@ -138,6 +151,10 @@ def gen_network(genome):
 
 
 def create_layers(genome):
+    """
+    Creates a list of layers for the given genome.
+    each layer is a set of nodes.
+    """
     # Starting from first layer of inputs, it successively
     # finds all those nodes which have their inlinks contained
     # in the (i-1)th layer.
