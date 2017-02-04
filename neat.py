@@ -4,6 +4,7 @@ import logging
 
 class Genome:
     innov_no = 0
+    innov_tracker = {'node': {}, 'conn': {}}
     def __init__(self):
         self.gid = 0
         self.cid = 0
@@ -28,8 +29,11 @@ class Genome:
         return Genome.innov_no
 
 class Node:
-    def __init__(self, genome):
-        self.id = genome.get_gid()
+    def __init__(self, genome, id=None):
+        if id:
+            self.id = id
+        else:
+            self.id = genome.get_gid()
         self.in_links = set()
         self.out_links = set()
         genome.nodes.add(self)
@@ -39,23 +43,23 @@ class Node:
 
 
 class Connection:
-    def __init__(self, in_node, out_node, wt, genome, innov=None, enabled=True):
+    def __init__(self, in_node, out_node, wt, genome, innov_no=None, enabled=True):
         self.in_node = in_node
         self.out_node = out_node
         self.wt = wt
         self.enabled = enabled
         self.id = genome.get_cid()
-        if not innov:
-            self.innov = Genome.get_innov_no()
+        if not innov_no:
+            self.innov_no = Genome.get_innov_no()
         else:
-            self.innov = innov
+            self.innov_no = innov_no
         genome.conn.add(self)
         genome.links.add((in_node, out_node))
         in_node.out_links.add(self)
         out_node.in_links.add(self)
 
     def __repr__(self):
-        return "{}: ({} -- {} --> {}) [{}]".format(self.innov, self.in_node, self.wt, self.out_node, self.enabled)
+        return "{}: ({} -- {} --> {}) [{}]".format(self.innov_no, self.in_node, self.wt, self.out_node, self.enabled)
 
 
 def cyclic_move(genome, i, o):
@@ -103,23 +107,26 @@ def crossover(p1, p2):
 
     for conn1 in p1.conn:
         for conn2 in p2.conn:
-            #print(conn1, conn2)
-            print(conn1.innov, conn2.innov)
-            if conn1.innov == conn2.innov:
+            if conn1.innov_no == conn2.innov_no:
                 # matching genes
                 matching1.add(conn1)
                 matching2.add(conn2)
-                Connection(conn1.in_node, conn1.out_node, conn1.wt, offspring, conn1.innov, enabled=conn1.enabled)
+                Connection(conn1.in_node, conn1.out_node, conn1.wt, offspring, conn1.innov_no, enabled=conn1.enabled)
 
-    print('lol')
+    print('Offspring after matching connections')
     for x in offspring.conn:
         print(x)
-    print('lol')
+
 
     for conn in (p1.conn - matching1) | (p2.conn - matching2):
         # non matching genes
-        Connection(conn.in_node, conn.out_node, conn.wt, offspring, conn.innov, enabled=conn.enabled)
+        Connection(conn.in_node, conn.out_node, conn.wt, offspring, conn.innov_no, enabled=conn.enabled)
 
+    print('Offspring after non- matching connections')
+    for x in offspring.conn:
+        print(x)
+
+    print('~')
     return offspring
 
 
@@ -138,13 +145,26 @@ def mutate(genome):
             # new connection out of <--new node gets weight of old connection
             # new connection leading into -->new node gets weight 1.0
             # This method minimizes initial effect of mutation
-            node = Node(genome)
             old_conn = random.choice(tuple(genome.conn))
+            innov_no1 = None
+            innov_no2 = None
+            id = None
+            marker = (old_conn.in_node.id, old_conn.out_node.id)
+            if marker in Genome.innov_tracker['node']:
+                history = Genome.innov_tracker['node'][marker]
+                id = history[0]
+                innov_no1 = history[1]
+                innov_no2 = history[2]
+                print("Using old innov add gene")
+            node = Node(genome, id)
             n1 = old_conn.in_node
             n2 = old_conn.out_node
             old_conn.enabled = False
-            new_conn1 = Connection(node, n2, old_conn.wt, genome)
-            new_conn2 = Connection(n1, node, 1.0, genome)
+            new_conn1 = Connection(node, n2, old_conn.wt, genome, innov_no1)
+            new_conn2 = Connection(n1, node, 1.0, genome, innov_no2)
+            if not id:
+                print("Adding old innov add gene")
+                Genome.innov_tracker['node'][marker] = (node.id, new_conn1.innov_no, new_conn2.innov_no)
 
     if random.random() < STRUCT_MUTATE_RATE:
             logging.info("Mutation: adding a connection")
@@ -157,7 +177,16 @@ def mutate(genome):
                     out_connected = set(x.out_node for x in node.out_links)
                     for n in genome.nodes - out_connected - illegal_nodes:
                         if not cyclic_move(genome, node, n):
-                            new_conn = Connection(node, n, random.random(), genome)
+                            innov_no = None
+                            marker = (node.id, n.id)
+                            if marker in Genome.innov_tracker['conn']:
+                                history = Genome.innov_tracker['conn'][marker]
+                                innov_no = history
+                                print("Using old innov add conn")
+                            new_conn = Connection(node, n, random.random(), genome, innov_no)
+                            if not innov_no:
+                                Genome.innov_tracker['conn'][marker] = new_conn.innov_no
+                                print("Adding old innov add conn")
                             return
             else:
                 logging.info("Mutation: could not find any legal connections to add")
@@ -284,20 +313,15 @@ def main():
                 Connection(i, j, random.random(), g, innov_no)
                 innov_no += 1
 
-        nw = gen_network(g)
-        print(nw([0.5,-0.9]))
-        print(nw([-0.1,0.1]))
-        for _ in range(5):
+        for _ in range(30):
             mutate(g)
-        nw = gen_network(g)
-        print(nw([0.5,-0.9]))
-        print(nw([-0.1,0.1]))
-        print('---')
 
+    print(Genome.innov_tracker)
 
+    print('Conn 1')
     for x in genomes[0].conn:
         print(x)
-    print('~')
+    print('Conn 2')
     for x in genomes[1].conn:
         print(x)
     print('~')
