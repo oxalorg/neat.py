@@ -3,6 +3,7 @@ import random
 import logging
 
 class Genome:
+    innov_no = 0
     def __init__(self):
         self.gid = 0
         self.cid = 0
@@ -11,6 +12,7 @@ class Genome:
         self.links = set()
         self.inputs = []
         self.outputs = []
+        self.fitness = 0
 
     def get_gid(self):
         self.gid += 1
@@ -20,6 +22,10 @@ class Genome:
         self.cid += 1
         return self.cid
 
+    @classmethod
+    def get_innov_no(self):
+        Genome.innov_no += 1
+        return Genome.innov_no
 
 class Node:
     def __init__(self, genome):
@@ -33,19 +39,23 @@ class Node:
 
 
 class Connection:
-    def __init__(self, in_node, out_node, wt, genome, enabled=True):
+    def __init__(self, in_node, out_node, wt, genome, innov=None, enabled=True):
         self.in_node = in_node
         self.out_node = out_node
         self.wt = wt
         self.enabled = enabled
         self.id = genome.get_cid()
+        if not innov:
+            self.innov = Genome.get_innov_no()
+        else:
+            self.innov = innov
         genome.conn.add(self)
         genome.links.add((in_node, out_node))
         in_node.out_links.add(self)
         out_node.in_links.add(self)
 
     def __repr__(self):
-        return "{}: ({} -- {} --> {}) [{}]".format(self.id, self.in_node, self.wt, self.out_node, self.enabled)
+        return "{}: ({} -- {} --> {}) [{}]".format(self.innov, self.in_node, self.wt, self.out_node, self.enabled)
 
 
 def cyclic_move(genome, i, o):
@@ -69,6 +79,48 @@ def cyclic_move(genome, i, o):
 
         if num_added == 0:
             return False
+
+
+def crossover(p1, p2):
+    """
+    Performs crossover on 2 parents p1, p2.
+    Returns their offspring.
+    """
+    if p1.fitness < p2.fitness:
+        p1, p2 = p2, p1
+
+    offspring = Genome()
+    matching1 = set()
+    matching2 = set()
+
+    for _ in p1.inputs:
+        offspring.inputs.append(Node(offspring))
+    for _ in p1.outputs:
+        offspring.outputs.append(Node(offspring))
+
+    for _ in p1.nodes | p2.nodes - set(p1.inputs) - set(p1.outputs):
+        Node(offspring)
+
+    for conn1 in p1.conn:
+        for conn2 in p2.conn:
+            #print(conn1, conn2)
+            print(conn1.innov, conn2.innov)
+            if conn1.innov == conn2.innov:
+                # matching genes
+                matching1.add(conn1)
+                matching2.add(conn2)
+                Connection(conn1.in_node, conn1.out_node, conn1.wt, offspring, conn1.innov, enabled=conn1.enabled)
+
+    print('lol')
+    for x in offspring.conn:
+        print(x)
+    print('lol')
+
+    for conn in (p1.conn - matching1) | (p2.conn - matching2):
+        # non matching genes
+        Connection(conn.in_node, conn.out_node, conn.wt, offspring, conn.innov, enabled=conn.enabled)
+
+    return offspring
 
 
 def mutate(genome):
@@ -213,11 +265,13 @@ def test():
 
 
 def main():
-    pop_size = 10
+    pop_size = 6
     input_size = 2
     output_size = 1
     genomes = []
+    Genome.innov_no += input_size + output_size
     for _ in range(pop_size):
+        innov_no = 1
         g = Genome()
         genomes.append(g)
         for i in range(input_size):
@@ -227,18 +281,30 @@ def main():
 
         for i in g.inputs:
             for j in g.outputs:
-                Connection(i, j, random.random(), g)
+                Connection(i, j, random.random(), g, innov_no)
+                innov_no += 1
 
         nw = gen_network(g)
         print(nw([0.5,-0.9]))
         print(nw([-0.1,0.1]))
-        for _ in range(50):
+        for _ in range(5):
             mutate(g)
         nw = gen_network(g)
         print(nw([0.5,-0.9]))
         print(nw([-0.1,0.1]))
         print('---')
 
+
+    for x in genomes[0].conn:
+        print(x)
+    print('~')
+    for x in genomes[1].conn:
+        print(x)
+    print('~')
+    offspring = crossover(genomes[0], genomes[1])
+    for x in offspring.conn:
+        print(x)
+    print('~')
 
 
 if __name__ == '__main__':
