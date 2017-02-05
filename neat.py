@@ -133,7 +133,7 @@ def mutate_add_conn(g):
 
 def detect_cycle(g, ip, op):
     if ip == op:
-        return
+        return False
 
     incoming = defaultdict(list)
     for gene in g['genes'].values():
@@ -263,8 +263,8 @@ def generate_network(g):
 def main():
     pop_size = 20
     pop = create_population(pop_size)
-    for _ in range(4000):
-        mutate(pop[0])
+    for i in range(4000):
+        mutate(pop[i%20])
     print(pop[0])
     nw = generate_network(pop[0])
     nw([-0.55, 0.4, -0.05])
