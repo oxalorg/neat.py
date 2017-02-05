@@ -117,6 +117,8 @@ def mutate_add_conn(g):
 
     nid1 = n1['id']
     nid2 = n2['id']
+    if nid1 == nid2:
+        return
     # check if a cyclic link exists
     if detect_cycle(g, nid1, nid2):
         logging.debug("Found a cycle")
@@ -127,6 +129,7 @@ def mutate_add_conn(g):
     innov_no = next_innov_no()
     gene = create_gene(ip=nid1, op=nid2, wt=1.0, innov_no=innov_no)
     g['genes'][innov_no] = gene
+    logging.debug("mutation: added a conn")
 
 def detect_cycle(g, ip, op):
     if ip == op:
@@ -136,17 +139,15 @@ def detect_cycle(g, ip, op):
     for gene in g['genes'].values():
         incoming[gene['op']].append(gene['ip'])
 
-    reachable = set([op])
-    unexplored = set([op])
+    unexplored = set([ip])
     explored = set()
     while unexplored:
         node = unexplored.pop()
         explored.add(node)
         for n in incoming[node]:
             if n not in explored:
-                reachable.add(n)
                 unexplored.add(n)
-        if ip in reachable:
+        if op in explored:
             return True
     return False
 
@@ -162,6 +163,10 @@ def mutate_add_node(g):
     ip, op, wt = gene['ip'], gene['op'], gene['wt']
     neuron = create_neuron(layer=Layer.HIDDEN)
     nid = next_nid(g)
+    if ip == op or ip == nid or nid == op:
+        logging.error("KILL ME PLS")
+        logging.error("{} {} {}".format(ip, nid, op))
+        return
     neuron['id'] = nid
     g['neurons'][nid] = neuron
 
@@ -171,6 +176,7 @@ def mutate_add_node(g):
     gene2 = create_gene(ip=nid, op=op, wt=wt, innov_no=innov_no2)
     g['genes'][innov_no1] = gene1
     g['genes'][innov_no2] = gene2
+    logging.debug("mutation: added a node")
 
 def crossover(mom, dad):
     if mom['fitness'] < dad['fitness']:
@@ -257,14 +263,11 @@ def generate_network(g):
 def main():
     pop_size = 20
     pop = create_population(pop_size)
-    for _ in range(300):
+    for _ in range(4000):
         mutate(pop[0])
     print(pop[0])
     nw = generate_network(pop[0])
     nw([-0.55, 0.4, -0.05])
-
-    l = create_layers(pop[0])
-    print(l)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
