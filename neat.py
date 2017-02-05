@@ -8,16 +8,19 @@ class Genome:
     def __init__(self):
         self.gid = 0
         self.cid = 0
-        self.conn = set()
         self.nodes = set()
-        self.links = set()
         self.threads = dict()
         self.inputs = []
         self.outputs = []
         self.fitness = 0
 
     def get_gid(self):
-        self.gid += 1
+        #self.gid += 1
+        try:
+            id = max(list(x.id for x in self.nodes))
+        except ValueError:
+            id = 0
+        self.gid = id + 1
         return self.gid
 
     def get_cid(self):
@@ -31,6 +34,8 @@ class Genome:
 
 class Node:
     def __init__(self, genome, id=None):
+        if id in (x.id for x in genome.nodes):
+            logging.error("Overwritting a node ID. This is bad.")
         if id:
             self.id = id
         else:
@@ -45,17 +50,17 @@ class Node:
 
 class Connection:
     def __init__(self, in_node, out_node, wt, genome, innov_no=None, enabled=True):
+        if (in_node.id, out_node.id) in genome.threads:
+            logging.error("Overwritting a connection. This is bad.")
         self.in_node = in_node
         self.out_node = out_node
         self.wt = wt
         self.enabled = enabled
         #self.id = genome.get_cid()
-        if not innov_no:
-            self.innov_no = Genome.get_innov_no()
-        else:
+        if innov_no:
             self.innov_no = innov_no
-        genome.conn.add(self)
-        genome.links.add((in_node, out_node))
+        else:
+            self.innov_no = Genome.get_innov_no()
         genome.threads[(in_node.id, out_node.id)] = self
         in_node.out_links.add(self)
         out_node.in_links.add(self)
@@ -122,7 +127,7 @@ def crossover(p1, p2):
     return offspring
 
 
-def mutate(genome):
+def mutate(g):
     """
     Mutates the given genome inplace. Returns nothing.
     """
@@ -137,7 +142,10 @@ def mutate(genome):
         # new connection out of <--new node gets weight of old connection
         # new connection leading into -->new node gets weight 1.0
         # This method minimizes initial effect of mutation
-        old_conn = random.choice(tuple(genome.conn))
+        old_conn = g.threads[random.choice(list(g.threads.keys()))]
+        if not old_conn.enabled:
+            logging.debug("Picked a disabled node. Returning.")
+            return
         innov_no1 = None
         innov_no2 = None
         id = None
@@ -145,43 +153,50 @@ def mutate(genome):
         n2 = old_conn.out_node
         marker = (n1.id, n2.id)
         if marker in Genome.innov_tracker['node']:
+            logging.debug("Connection to be split has a marker in innovation tracker")
             history = Genome.innov_tracker['node'][marker]
             id = history[0]
             innov_no1 = history[1]
             innov_no2 = history[2]
-        node = Node(genome, id)
+            if id in marker:
+                logging.debug("But the id of the node is the same as that of the marker.")
+                # TODO: this shouldn't be happening, fix this
+                return
+        node = Node(g, id)
         old_conn.enabled = False
-        new_conn1 = Connection(node, n2, old_conn.wt, genome, innov_no1)
-        new_conn2 = Connection(n1, node, 1.0, genome, innov_no2)
+        new_conn1 = Connection(node, n2, old_conn.wt, g, innov_no1)
+        new_conn2 = Connection(n1, node, 1.0, g, innov_no2)
         if not id:
+            logging.debug("Adding the marker into tracking")
             Genome.innov_tracker['node'][marker] = (node.id, new_conn1.innov_no, new_conn2.innov_no)
+        logging.debug("Mutation: Finished adding a node")
 
     if random.random() < STRUCT_MUTATE_RATE - 1:
         logging.info("Mutation: adding a connection")
         # add connection
         # new connection gene with random wt is added,
         # connecting 2 previously unconnected nodes
-        illegal_nodes = set(genome.inputs)
-        for selected_node in set(random.sample(genome.nodes, k=len(genome.nodes))) - set(genome.outputs):
-            for node in genome.nodes - set([selected_node]) - illegal_nodes:
+        illegal_nodes = set(g.inputs)
+        for selected_node in set(random.sample(g.nodes, k=len(g.nodes))) - set(g.outputs):
+            for node in g.nodes - set([selected_node]) - illegal_nodes:
                 out_connected = set(x.out_node for x in node.out_links)
-                for n in genome.nodes - out_connected - illegal_nodes:
-                    if not cyclic_move(genome, node, n) and not (node, n) in genome.threads and not (n, node) in genome.threads:
+                for n in g.nodes - out_connected - illegal_nodes:
+                    if not cyclic_move(g, node, n) and not (node, n) in g.threads and not (n, node) in g.threads:
                         innov_no = None
                         marker = (node.id, n.id)
                         if marker in Genome.innov_tracker['conn']:
                             history = Genome.innov_tracker['conn'][marker]
                             innov_no = history
-                        new_conn = Connection(node, n, random.random(), genome, innov_no)
+                        new_conn = Connection(node, n, random.random(), g, innov_no)
                         if not innov_no:
                             Genome.innov_tracker['conn'][marker] = new_conn.innov_no
                         return
         else:
             logging.info("Mutation: could not find any legal connections to add")
 
-    for conn in genome.conn:
+    for t in g.threads:
         if random.random() < CONN_MUTATE_RATE:
-            conn.wt = random.random()
+            g.threads[t].wt = random.random()
 
 def act_fn(z):
     """Sigmoidal activation function"""
@@ -278,7 +293,7 @@ def main():
     output_size = 1
     genomes = []
     Genome.innov_no += input_size + output_size
-    for _ in range(pop_size):
+    for z in range(pop_size):
         innov_no = 1
         g = Genome()
         genomes.append(g)
@@ -292,26 +307,23 @@ def main():
                 Connection(i, j, random.random(), g, innov_no)
                 innov_no += 1
 
+        logging.debug("Mutation starting for genome sequence: {}".format(z))
         for _ in range(30):
             mutate(g)
 
 
     print('Conn 1')
-    print(genomes[0].conn)
     print(genomes[0].threads)
-    for x in genomes[0].conn:
+    for x in genomes[0].threads:
         print(x)
-    print('Conn 2')
-    for x in genomes[1].conn:
-        print(x)
-    print('~')
-    offspring = crossover(genomes[0], genomes[1])
-    for x in offspring.conn:
+    print('threads 2')
+    for x in genomes[1].threads:
         print(x)
     print('~')
+    #offspring = crossover(genomes[0], genomes[1])
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.ERROR)
+    logging.basicConfig(level=logging.DEBUG)
     main()
     #test()
