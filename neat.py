@@ -6,8 +6,8 @@ import pprint
 print = pprint.PrettyPrinter(width=120).pprint
 from enum import Enum
 
-INPUTS = 3
-OUTPUTS = 2
+INPUTS = 2
+OUTPUTS = 1
 innov_no = INPUTS * OUTPUTS - 1
 
 class Layer(Enum):
@@ -32,8 +32,8 @@ def create_gene(ip=None, op=None, wt=0.0, enabled=True, innov_no=0):
 def create_neuron(layer=None):
     neuron = {}
     neuron['id'] = 0
-    neuron['in_links'] = {}
-    neuron['value'] = 0.0
+    #neuron['in_links'] = {}
+    #neuron['value'] = 0.0
     neuron['type'] = layer
     return neuron
 
@@ -74,7 +74,7 @@ def init_individual():
             gene = create_gene(innov_no=innov_no)
             gene['ip'] = genome['ip_neurons'][i]
             gene['op'] = genome['op_neurons'][j]
-            gene['wt'] = random.random()
+            gene['wt'] = random.random() * 2 - 1
             genome['genes'][innov_no] = gene
             #genome['genes'][(gene['ip'], gene['op'])] = gene
             innov_no += 1
@@ -101,11 +101,16 @@ def next_nid(genome):
 def mutate(genome):
     NODE_MUTATE_PROB = 0.05
     CONN_MUTATE_PROB = 0.05
+    WT_MUTATE_PROB = 0.05
 
     if random.random() < NODE_MUTATE_PROB:
         mutate_add_node(genome)
     if random.random() < CONN_MUTATE_PROB:
         mutate_add_conn(genome)
+    if random.random() < WT_MUTATE_PROB:
+        for gene in genome['genes'].values():
+            gene['wt'] = random.random() * 2 - 1
+
 
 def mutate_add_conn(g):
     # Select any 2 neurons
@@ -183,6 +188,8 @@ def crossover(mom, dad):
         dad, mom = mom, dad
 
     child = create_genome()
+    child['ip_neurons'] = mom['ip_neurons']
+    child['op_neurons'] = mom['op_neurons']
     child['neurons'].update(mom['neurons'])
     child['neurons'].update(dad['neurons'])
 
@@ -199,7 +206,7 @@ def crossover(mom, dad):
             child['genes'][gene] = dad['genes'][gene].copy()
 
     last_neuron = max([x['id'] for x in child['neurons'].values()])
-    child['last_neuron'] = last_neuron
+    child['last_neuron'] = last_neuron + 1
     return child
 
 def create_layers(g):
@@ -252,22 +259,67 @@ def generate_network(g):
                     total += wt[(ip, node)] * values[ip]
                 total = act_fn(total)
                 values[node] = total
-                print(values)
 
+        outputs = []
         for op_n in g['op_neurons']:
-            print(op_n)
-            print(values[op_n])
+            outputs.append(values[op_n])
+
+        return outputs
 
     return activate
 
+def reproduce(pop):
+    """
+    Given a list of individuals, perform mating
+    and mutation to return individuals for newer generation
+    """
+    new_pop = []
+    for i in range(0, len(pop), 2):
+        dad = random.choice(pop)
+        mom = random.choice(pop)
+        son = crossover(dad, mom)
+        daughter = crossover(dad, mom)
+        mutate(son)
+        mutate(daughter)
+        new_pop.append(son)
+        new_pop.append(daughter)
+    return new_pop
+
+xor_inputs = [(0.0, 0.0), (0.0, 1.0), (1.0, 0.0), (1.0, 1.0)]
+xor_outputs = [   (0.0,),     (1.0,),     (1.0,),     (0.0,)]
+
+def fitness(pop):
+    """
+    Recieves a list of genomes. Modify ONLY their
+    fitness values
+    """
+    for g in pop:
+        g['fitness'] = 1.0
+        nw_activate = generate_network(g)
+        for xi, xo in zip(xor_inputs, xor_outputs):
+            output = nw_activate(xi)
+            g['fitness'] -= (output[0] - xo[0]) ** 2
+
 def main():
-    pop_size = 20
+    pop_size = 4
     pop = create_population(pop_size)
-    for i in range(4000):
-        mutate(pop[i%20])
-    print(pop[0])
-    nw = generate_network(pop[0])
-    nw([-0.55, 0.4, -0.05])
+
+    for gen in range(10):
+        fitness(pop)
+        pop = reproduce(pop)
+
+    print("After 100 generations")
+
+    fitness(pop)
+    ans = []
+    for g in pop:
+        print('FITNESS')
+        print(g['fitness'])
+        nw = generate_network(g)
+        for xi, xo in zip(xor_inputs, xor_outputs):
+            output = nw(xi)
+            print("input {!r}, expected output {!r}, got {!r}".format(xi, xo, output))
+
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
