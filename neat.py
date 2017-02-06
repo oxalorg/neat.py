@@ -1,4 +1,5 @@
 import math
+import argparse
 import copy
 import sys
 from collections import defaultdict
@@ -451,8 +452,7 @@ def print_fittest(species, file=sys.stdout):
     return fit
 
 
-def main():
-    pop_size = 100
+def main(gen_size=100, pop_size=150):
     pop = create_population(pop_size)
     fitness(pop)
     species = [pop]
@@ -460,7 +460,7 @@ def main():
 
     slen = []
     fp = open('log.txt', 'w')
-    for gen in range(200):
+    for gen in range(gen_size):
         # primary loop for generations
         # 1. get the representatives of the species for
         #    the current generation
@@ -481,11 +481,31 @@ def main():
     #setlen = set(slen)
     #pprint([(i, slen.count(i)) for i in setlen])
 
+
+def cli():
+    parser = argparse.ArgumentParser(
+            description='neat.py - My personal implementation of NEAT',
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('-g',
+            '--generations',
+            dest='generations',
+            type=int,
+            default=100,
+            help='Number of generations')
+    parser.add_argument('-p',
+            '--population',
+            dest='population',
+            type=int,
+            default=150,
+            help='Population size')
+    args = parser.parse_args()
+    main(args.generations, args.population)
+
+
 if __name__ == '__main__':
     logging.basicConfig(level=logging.ERROR)
     try:
-        for i in range(1):
-            main()
+        cli()
     except KeyboardInterrupt:
         sys.exit()
 
