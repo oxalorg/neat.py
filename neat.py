@@ -10,7 +10,7 @@ from enum import Enum
 INPUTS = 2
 OUTPUTS = 1
 BIAS = 1
-innov_no = INPUTS * OUTPUTS - 1
+innov_no = (INPUTS + BIAS) * OUTPUTS - 1
 
 class Layer(Enum):
     INPUT = 0
@@ -22,7 +22,6 @@ def act_fn(z):
     """Sigmoidal activation function"""
     z = min(40, max(-40, z))
     return 1.0 / (1.0 + math.exp(-4.9 * z))
-    #return (2.0 / (1.0 + math.exp(-4.5 * z))) - 1
 
 def create_gene(ip=None, op=None, wt=0.0, enabled=True, innov_no=0):
     gene = {}
@@ -409,6 +408,7 @@ def print_fittest(species, file=sys.stdout):
     for xi, xo in zip(xor_inputs, xor_outputs):
         output = nw(xi)
         print("input {!r}, expected output {!r}, got {!r}".format(xi, xo, output), file=file)
+    return fit
 
 
 def main():
@@ -420,7 +420,7 @@ def main():
 
     slen = []
     fp = open('log.txt', 'w')
-    for gen in range(50):
+    for gen in range(200):
         # primary loop for generations
         # 1. get the representatives of the species for
         #    the current generation
@@ -436,7 +436,8 @@ def main():
         print_fittest(species, fp)
 
     fp.close()
-    print_fittest(species)
+    fit = print_fittest(species)
+    pprint(fit)
     #setlen = set(slen)
     #pprint([(i, slen.count(i)) for i in setlen])
 
