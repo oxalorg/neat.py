@@ -99,16 +99,16 @@ def next_nid(genome):
     return nid
 
 def mutate(genome):
-    NODE_MUTATE_PROB = 0.05
-    CONN_MUTATE_PROB = 0.05
-    WT_MUTATE_PROB = 0.05
+    NODE_MUTATE_PROB = 0.07
+    CONN_MUTATE_PROB = 0.2
+    WT_MUTATE_PROB = 0.2
 
     if random.random() < NODE_MUTATE_PROB:
         mutate_add_node(genome)
     if random.random() < CONN_MUTATE_PROB:
         mutate_add_conn(genome)
-    if random.random() < WT_MUTATE_PROB:
-        for gene in genome['genes'].values():
+    for gene in genome['genes'].values():
+        if random.random() < WT_MUTATE_PROB:
             gene['wt'] = random.random() * 2 - 1
 
 
@@ -199,11 +199,12 @@ def crossover(mom, dad):
             # matching gene
             child['genes'][gene] = dad['genes'][gene].copy()
         else:
+            # disjoint gene, copy from fitter parent
             child['genes'][gene] = mom['genes'][gene].copy()
 
-    for gene in dad['genes']:
-        if gene not in mom['genes']:
-            child['genes'][gene] = dad['genes'][gene].copy()
+    #for gene in dad['genes']:
+    #    if gene not in mom['genes']:
+    #        child['genes'][gene] = dad['genes'][gene].copy()
 
     last_neuron = max([x['id'] for x in child['neurons'].values()])
     child['last_neuron'] = last_neuron + 1
@@ -268,59 +269,130 @@ def generate_network(g):
 
     return activate
 
-def reproduce(pop):
+def reproduce(species):
     """
     Given a list of individuals, perform mating
     and mutation to return individuals for newer generation
     """
     new_pop = []
-    for i in range(0, len(pop), 2):
-        dad = random.choice(pop)
-        mom = random.choice(pop)
-        son = crossover(dad, mom)
-        daughter = crossover(dad, mom)
-        mutate(son)
-        mutate(daughter)
-        new_pop.append(son)
-        new_pop.append(daughter)
+    for sp in species:
+        sp_size = len(sp)
+        # remove 25% most unfit members
+        sp = sorted(sp, key=lambda x: x['fitness'])[sp_size//4:]
+        while sp_size:
+            dad = random.choice(sp)
+            mom = random.choice(sp)
+            child = crossover(dad, mom)
+            mutate(child)
+            new_pop.append(child)
+            sp_size -= 1
     return new_pop
 
 xor_inputs = [(0.0, 0.0), (0.0, 1.0), (1.0, 0.0), (1.0, 1.0)]
 xor_outputs = [   (0.0,),     (1.0,),     (1.0,),     (0.0,)]
 
+def get_reps(species):
+    pop = []
+    reps = []
+    for sp in species:
+        pop.extend(sp)
+        reps.append(random.choice(sp))
+    # can return population if needed
+    return reps
+
 def fitness(pop):
     """
-    Recieves a list of genomes. Modify ONLY their
+    Recieves a list of pop. Modify ONLY their
     fitness values
     """
     for g in pop:
-        g['fitness'] = 1.0
+        g['fitness'] = 4.0
         nw_activate = generate_network(g)
         for xi, xo in zip(xor_inputs, xor_outputs):
             output = nw_activate(xi)
             g['fitness'] -= (output[0] - xo[0]) ** 2
 
-def main():
-    pop_size = 4
-    pop = create_population(pop_size)
+def calc_DEW(g1, g2):
+    gene1_set = {x for x in g1['genes']}
+    gene2_set = {x for x in g2['genes']}
+    excess_marker = max(gene1_set)
 
-    for gen in range(10):
-        fitness(pop)
-        pop = reproduce(pop)
+    complete = gene1_set | gene2_set
+    matching = gene1_set & gene2_set
+    avg_wt = 0
+    for gene in matching:
+        avg_wt += g1['genes'][gene]['wt'] - g2['genes'][gene]['wt']
+    avg_wt /= len(matching)
 
-    print("After 100 generations")
+    non_matching = complete - matching
+    excess = len([x for x in non_matching if x > excess_marker])
+    disjoint = len([x for x in non_matching if x <= excess_marker])
+    return disjoint, excess, avg_wt
 
-    fitness(pop)
-    ans = []
+def delta_fn(g1, g2):
+    c1 = 0.8
+    c2 = 0.1
+    c3 = 0.4
+    N = max(len(g1['genes']), len(g2['genes']))
+    d, e, w = calc_DEW(g1, g2)
+    delta = (c2 * d + c1 * e)/N + c3 * w
+    return delta
+
+def speciate(pop, reps):
+    delta_th = 0.01
+    species = [(rep, []) for rep in reps]
     for g in pop:
-        print('FITNESS')
-        print(g['fitness'])
-        nw = generate_network(g)
-        for xi, xo in zip(xor_inputs, xor_outputs):
-            output = nw(xi)
-            print("input {!r}, expected output {!r}, got {!r}".format(xi, xo, output))
+        for sp in species:
+            if delta_fn(g, sp[0]) < delta_th:
+                sp[1].append(g)
+                break
+        else:
+            species.append((g, [g]))
 
+    # explicit fitness sharing
+    for sp in species:
+        n = len(sp[1])
+        for g in sp[1]:
+            g['fitness'] = g['fitness']/n
+
+    # kill empty species and convert to a list
+    sp_list = [x[1] for x in species if x[1]]
+
+    return sp_list
+
+def main():
+    pop_size = 20
+    pop = create_population(pop_size)
+    fitness(pop)
+    species = [pop]
+    reps = [pop[0]]
+
+    slen = []
+    for gen in range(100):
+        # primary loop for generations
+        # 1. get the representatives of the species for
+        #    the current generation
+        # 2. reproduce the species to get back a new population
+        # 3. update the fitness value of the population
+        # 4. speciate the population into their own species
+        #print("Generation {}".format(gen))
+        reps = get_reps(species)
+        pop = reproduce(species)
+        fitness(pop)
+        species = speciate(pop, reps)
+        slen.append(len(species))
+
+    fittest = []
+    for sp in species:
+        fittest.append(max([x for x in sp], key=lambda x: x['fitness']))
+
+    setlen = set(slen)
+    print([(i, slen.count(i)) for i in setlen])
+    for fit in fittest:
+        print("Fitness: {:.03f}, Genes: {}, Neurons: {}".format(fit['fitness'], len(fit['genes']), len(fit['neurons'])))
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
-    main()
+    logging.basicConfig(level=logging.ERROR)
+    for i in range(1):
+        main()
+
