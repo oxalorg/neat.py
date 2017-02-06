@@ -9,12 +9,14 @@ from enum import Enum
 
 INPUTS = 2
 OUTPUTS = 1
+BIAS = 1
 innov_no = INPUTS * OUTPUTS - 1
 
 class Layer(Enum):
     INPUT = 0
     HIDDEN = 1
     OUTPUT = 2
+    BIAS = 3
 
 def act_fn(z):
     """Sigmoidal activation function"""
@@ -45,6 +47,7 @@ def create_genome():
     genome['neurons'] = {}
     genome['ip_neurons'] = []
     genome['op_neurons'] = []
+    genome['bias_neurons'] = []
     genome['last_neuron'] = 0
     genome['fitness'] = 0.0
     return genome
@@ -68,6 +71,13 @@ def init_individual():
         genome['op_neurons'].append(nid)
         nid += 1
 
+    for i in range(BIAS):
+        neuron = create_neuron(layer=Layer.BIAS)
+        neuron['id'] = nid
+        genome['neurons'][nid] = neuron
+        genome['bias_neurons'].append(nid)
+        nid += 1
+
     genome['last_neuron'] = nid - 1
     # Create a gene for every ip, op pair
     innov_no = 0
@@ -80,6 +90,17 @@ def init_individual():
             genome['genes'][innov_no] = gene
             #genome['genes'][(gene['ip'], gene['op'])] = gene
             innov_no += 1
+
+    for i in range(BIAS):
+        for j in range(OUTPUTS):
+            gene = create_gene(innov_no=innov_no)
+            gene['ip'] = genome['bias_neurons'][i]
+            gene['op'] = genome['op_neurons'][j]
+            gene['wt'] = random.random() * 2 - 1
+            genome['genes'][innov_no] = gene
+            #genome['genes'][(gene['ip'], gene['op'])] = gene
+            innov_no += 1
+
     return genome
 
 def create_population(size):
@@ -124,7 +145,7 @@ def mutate_add_conn(g):
     # Make sure that the the op neuron is not
     # from an input layer
     n1 = random.choice([x for x in g['neurons'].values() if x['type'] != Layer.OUTPUT])
-    n2 = random.choice([x for x in g['neurons'].values() if x['type'] != Layer.INPUT])
+    n2 = random.choice([x for x in g['neurons'].values() if x['type'] != Layer.INPUT and x['type'] != Layer.BIAS])
 
     nid1 = n1['id']
     nid2 = n2['id']
@@ -196,6 +217,7 @@ def crossover(mom, dad):
     child = create_genome()
     child['ip_neurons'] = mom['ip_neurons']
     child['op_neurons'] = mom['op_neurons']
+    child['bias_neurons'] = mom['bias_neurons']
     child['neurons'].update(mom['neurons'])
     child['neurons'].update(dad['neurons'])
 
@@ -221,8 +243,10 @@ def create_layers(g):
     layers = [nodep.copy()]
     remaining = {x for x in g['neurons'].keys()} - nodep
     incoming = defaultdict(list)
+    wt = {}
     for gene in g['genes'].values():
         incoming[gene['op']].append(gene['ip'])
+        wt[(gene['ip'], gene['op'])] = gene['wt']
     while True:
         L = set()
         for node in remaining:
@@ -242,10 +266,11 @@ def create_layers(g):
         if not remaining:
             break
 
-    return layers
+    return layers, incoming, wt
 
 def generate_network(g):
-    layers = create_layers(g)
+    layers, incoming, wt = create_layers(g)
+
     def activate(inputs):
         # set the values for the inputs
         values = {x: 0.0 for x in g['neurons'].keys()}
@@ -253,24 +278,20 @@ def generate_network(g):
             #g['neurons'][ip_n]['value'] = inputs[i]
             values[ip_n] = inputs[i]
 
-        incoming = defaultdict(list)
-        wt = {}
-        for gene in g['genes'].values():
-            incoming[gene['op']].append(gene['ip'])
-            wt[(gene['ip'], gene['op'])] = gene['wt']
+        values[g['bias_neurons'][0]] = 1.0
 
         for layer in layers[1:]:
             for node in layer:
                 total = 0
+                if not incoming[node]:
+                    # if no incoming node, don't apply actv function
+                    continue
                 for ip in incoming[node]:
                     total += wt[(ip, node)] * values[ip]
                 total = act_fn(total)
                 values[node] = total
 
-        outputs = []
-        for op_n in g['op_neurons']:
-            outputs.append(values[op_n])
-
+        outputs = [values[op] for op in g['op_neurons']]
         return outputs
 
     return activate
@@ -289,8 +310,10 @@ def reproduce(species):
         # remove 25% most unfit members
         sp = sorted(sp, key=lambda x: x['fitness'])[sp_size//4:]
         norm_sp_size = sum([x['fitness'] for x in sp])//adj_ftn_sum
-        norm_sp_size = sp_size
-        while norm_sp_size > norm_sp_size // 4:
+        new_pop.append(sp.pop())
+        norm_sp_size = sp_size - 1
+        norm_25 = norm_sp_size // 4
+        while norm_sp_size > 0 and norm_sp_size > norm_25:
             dad = random.choice(sp)
             mom = random.choice(sp)
             child = crossover(dad, mom)
@@ -298,6 +321,7 @@ def reproduce(species):
             new_pop.append(child)
             norm_sp_size -= 1
         while norm_sp_size > 0:
+            #print("W0000000000000000000T1231231000000000000000000000000000000000000")
             child = random.choice(sp)
             mutate(child)
             new_pop.append(child)
@@ -309,12 +333,7 @@ xor_inputs = [(0.0, 0.0), (0.0, 1.0), (1.0, 0.0), (1.0, 1.0)]
 xor_outputs = [   (0.0,),     (1.0,),     (1.0,),     (0.0,)]
 
 def get_reps(species):
-    pop = []
-    reps = []
-    for sp in species:
-        pop.extend(sp)
-        reps.append(random.choice(sp))
-    # can return population if needed
+    reps = [sp[0] for sp in species]
     return reps
 
 def fitness(pop):
@@ -378,15 +397,30 @@ def speciate(pop, reps):
 
     return sp_list
 
+
+def print_fittest(species, file=sys.stdout):
+    fittest = []
+    for sp in species:
+        fittest.append(max([x for x in sp], key=lambda x: x['fitness']))
+    fit = max([x for x in fittest], key= lambda x: x['fitness'])
+    print("Fitness: {:.03f}, Genes: {}, Neurons: {}".format(fit['fitness'], len(fit['genes']), len(fit['neurons'])), file=file)
+    print("Species len: {}".format(len(species)), file=file)
+    nw = generate_network(fit)
+    for xi, xo in zip(xor_inputs, xor_outputs):
+        output = nw(xi)
+        print("input {!r}, expected output {!r}, got {!r}".format(xi, xo, output), file=file)
+
+
 def main():
-    pop_size = 150
+    pop_size = 100
     pop = create_population(pop_size)
     fitness(pop)
     species = [pop]
     reps = [pop[0]]
 
     slen = []
-    for gen in range(100):
+    fp = open('log.txt', 'w')
+    for gen in range(50):
         # primary loop for generations
         # 1. get the representatives of the species for
         #    the current generation
@@ -399,25 +433,18 @@ def main():
         fitness(pop)
         species = speciate(pop, reps)
         slen.append(len(species))
+        print_fittest(species, fp)
 
-    print("")
-    fittest = []
-    for sp in species:
-        fittest.append(max([x for x in sp], key=lambda x: x['fitness']))
-
-    setlen = set(slen)
-    pprint([(i, slen.count(i)) for i in setlen])
-    #for fit in fittest:
-    #   print("Fitness: {:.03f}, Genes: {}, Neurons: {}".format(fit['fitness'], len(fit['genes']), len(fit['neurons'])))
-    fit = max([x for x in fittest], key= lambda x: x['fitness'])
-    print("Fitness: {:.03f}, Genes: {}, Neurons: {}".format(fit['fitness'], len(fit['genes']), len(fit['neurons'])))
-    nw = generate_network(fit)
-    for xi, xo in zip(xor_inputs, xor_outputs):
-        output = nw(xi)
-        print("input {!r}, expected output {!r}, got {!r}".format(xi, xo, output))
+    fp.close()
+    print_fittest(species)
+    #setlen = set(slen)
+    #pprint([(i, slen.count(i)) for i in setlen])
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.ERROR)
-    for i in range(1):
-        main()
+    try:
+        for i in range(1):
+            main()
+    except KeyboardInterrupt:
+        sys.exit()
 
