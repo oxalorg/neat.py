@@ -330,23 +330,61 @@ def generate_network(g):
 
     return activate
 
+def fitness_sharing(species):
+    """
+    Performs explicit fitness sharing in-place
+    """
+    for sp in species:
+        n = len(sp)
+        for g in sp:
+            g['fitness'] = g['fitness']/n
+
+
 def reproduce(species):
     """
     Given a list of individuals, perform mating
     and mutation to return individuals for newer generation
     """
     new_pop = []
-    adj_ftn_sum = 0
+    adj_ftn = []
+    avg_adj_ftn = 0
+
+    fitness_sharing(species)
+
+    # calculate the average adjusted fitness
+    # for each species
     for sp in species:
-        adj_ftn_sum += sum([x['fitness'] for x in sp])
-    for sp in species:
-        sp_size = len(sp)
+        ftn_sum = sum([x['fitness'] for x in sp])
+        adj_ftn.append(ftn_sum/len(sp))
+
+    avg_adj_ftn = sum(adj_ftn)/len(species)
+
+    # new population size must be proportional to the
+    # average adjusted fitness of each species
+    new_pop_size = []
+    for i, sp in enumerate(species):
+        size = len(sp)
+        if adj_ftn[i] > avg_adj_ftn:
+            size *= 1.08
+        else:
+            size *= 0.92
+        new_pop_size.append(size)
+
+    for i, sp in enumerate(species):
+        size = new_pop_size[i]
+
         # remove 25% most unfit members
-        sp = sorted(sp, key=lambda x: x['fitness'])[sp_size//4:]
-        norm_sp_size = sum([x['fitness'] for x in sp])//adj_ftn_sum
-        new_pop.append(sp.pop())
-        norm_sp_size = sp_size - 1
+        sp = sorted(sp, key=lambda x: x['fitness'])[int(size)//4:]
+
+        if len(sp) > 5:
+            # If the species has atleast 5 individuals
+            # copy the fittest individual as it is
+            new_pop.append(sp[-1])
+            size -= 1
+
+        norm_sp_size = size
         norm_25 = norm_sp_size // 4
+
         while norm_sp_size > 0 and norm_sp_size > norm_25:
             dad = random.choice(sp)
             mom = random.choice(sp)
@@ -419,12 +457,6 @@ def speciate(pop, reps):
                 break
         else:
             species.append((g, [g]))
-
-    # explicit fitness sharing
-    for sp in species:
-        n = len(sp[1])
-        for g in sp[1]:
-            g['fitness'] = g['fitness']/n
 
     # kill empty species and convert to a list
     sp_list = [x[1] for x in species if x[1]]
