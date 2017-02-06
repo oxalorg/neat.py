@@ -1,9 +1,10 @@
 import math
+import sys
 from collections import defaultdict
 import random
 import logging
 import pprint
-print = pprint.PrettyPrinter(width=120).pprint
+pprint = pprint.PrettyPrinter(width=120).pprint
 from enum import Enum
 
 INPUTS = 2
@@ -18,7 +19,8 @@ class Layer(Enum):
 def act_fn(z):
     """Sigmoidal activation function"""
     z = min(40, max(-40, z))
-    return (2.0 / (1.0 + math.exp(-4.5 * z))) - 1
+    return 1.0 / (1.0 + math.exp(-4.9 * z))
+    #return (2.0 / (1.0 + math.exp(-4.5 * z))) - 1
 
 def create_gene(ip=None, op=None, wt=0.0, enabled=True, innov_no=0):
     gene = {}
@@ -99,17 +101,21 @@ def next_nid(genome):
     return nid
 
 def mutate(genome):
-    NODE_MUTATE_PROB = 0.07
-    CONN_MUTATE_PROB = 0.2
-    WT_MUTATE_PROB = 0.2
+    NODE_MUTATE_PROB = 0.03
+    CONN_MUTATE_PROB = 0.05
+    WT_MUTATE_PROB = 0.8
+    WT_PERTURBED_PROB = 0.9
 
     if random.random() < NODE_MUTATE_PROB:
         mutate_add_node(genome)
     if random.random() < CONN_MUTATE_PROB:
         mutate_add_conn(genome)
-    for gene in genome['genes'].values():
-        if random.random() < WT_MUTATE_PROB:
-            gene['wt'] = random.random() * 2 - 1
+    if random.random() < WT_MUTATE_PROB:
+        for gene in genome['genes'].values():
+            if random.random() < WT_PERTURBED_PROB:
+                gene['wt'] = gene['wt'] * (1 + (random.random() * 2 - 1)/10)
+            else:
+                gene['wt'] = random.random() * 2 - 1
 
 
 def mutate_add_conn(g):
@@ -275,17 +281,28 @@ def reproduce(species):
     and mutation to return individuals for newer generation
     """
     new_pop = []
+    adj_ftn_sum = 0
+    for sp in species:
+        adj_ftn_sum += sum([x['fitness'] for x in sp])
     for sp in species:
         sp_size = len(sp)
         # remove 25% most unfit members
         sp = sorted(sp, key=lambda x: x['fitness'])[sp_size//4:]
-        while sp_size:
+        norm_sp_size = sum([x['fitness'] for x in sp])//adj_ftn_sum
+        norm_sp_size = sp_size
+        while norm_sp_size > norm_sp_size // 4:
             dad = random.choice(sp)
             mom = random.choice(sp)
             child = crossover(dad, mom)
             mutate(child)
             new_pop.append(child)
-            sp_size -= 1
+            norm_sp_size -= 1
+        while norm_sp_size > 0:
+            child = random.choice(sp)
+            mutate(child)
+            new_pop.append(child)
+            norm_sp_size -= 1
+
     return new_pop
 
 xor_inputs = [(0.0, 0.0), (0.0, 1.0), (1.0, 0.0), (1.0, 1.0)]
@@ -330,16 +347,17 @@ def calc_DEW(g1, g2):
     return disjoint, excess, avg_wt
 
 def delta_fn(g1, g2):
-    c1 = 0.8
-    c2 = 0.1
+    c1 = 1.0
+    c2 = 1.0
     c3 = 0.4
     N = max(len(g1['genes']), len(g2['genes']))
+    N = 1 if N < 20 else N
     d, e, w = calc_DEW(g1, g2)
     delta = (c2 * d + c1 * e)/N + c3 * w
     return delta
 
 def speciate(pop, reps):
-    delta_th = 0.01
+    delta_th = 3.0
     species = [(rep, []) for rep in reps]
     for g in pop:
         for sp in species:
@@ -361,7 +379,7 @@ def speciate(pop, reps):
     return sp_list
 
 def main():
-    pop_size = 20
+    pop_size = 150
     pop = create_population(pop_size)
     fitness(pop)
     species = [pop]
@@ -375,21 +393,28 @@ def main():
         # 2. reproduce the species to get back a new population
         # 3. update the fitness value of the population
         # 4. speciate the population into their own species
-        #print("Generation {}".format(gen))
+        sys.stdout.write("Generation {}\r".format(gen))
         reps = get_reps(species)
         pop = reproduce(species)
         fitness(pop)
         species = speciate(pop, reps)
         slen.append(len(species))
 
+    print("")
     fittest = []
     for sp in species:
         fittest.append(max([x for x in sp], key=lambda x: x['fitness']))
 
     setlen = set(slen)
-    print([(i, slen.count(i)) for i in setlen])
-    for fit in fittest:
-        print("Fitness: {:.03f}, Genes: {}, Neurons: {}".format(fit['fitness'], len(fit['genes']), len(fit['neurons'])))
+    pprint([(i, slen.count(i)) for i in setlen])
+    #for fit in fittest:
+    #   print("Fitness: {:.03f}, Genes: {}, Neurons: {}".format(fit['fitness'], len(fit['genes']), len(fit['neurons'])))
+    fit = max([x for x in fittest], key= lambda x: x['fitness'])
+    print("Fitness: {:.03f}, Genes: {}, Neurons: {}".format(fit['fitness'], len(fit['genes']), len(fit['neurons'])))
+    nw = generate_network(fit)
+    for xi, xo in zip(xor_inputs, xor_outputs):
+        output = nw(xi)
+        print("input {!r}, expected output {!r}, got {!r}".format(xi, xo, output))
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.ERROR)
