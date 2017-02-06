@@ -1,4 +1,5 @@
 import math
+import copy
 import sys
 from collections import defaultdict
 import random
@@ -7,9 +8,14 @@ import pprint
 pprint = pprint.PrettyPrinter(width=120).pprint
 from enum import Enum
 
+# Number of i/p, o/p and bias units.
 INPUTS = 2
 OUTPUTS = 1
 BIAS = 1
+# Global innovation number, all individuals populations
+# are assumed to have same historical origins
+# hence their innovation numbers are same for the intially
+# fully connected network starting from 0 upto ``innov_no``
 innov_no = (INPUTS + BIAS) * OUTPUTS - 1
 
 class Layer(Enum):
@@ -19,11 +25,16 @@ class Layer(Enum):
     BIAS = 3
 
 def act_fn(z):
-    """Sigmoidal activation function"""
+    """
+    Sigmoidal activation function
+    """
     z = min(40, max(-40, z))
     return 1.0 / (1.0 + math.exp(-4.9 * z))
 
 def create_gene(ip=None, op=None, wt=0.0, enabled=True, innov_no=0):
+    """
+    Create a simple base gene i.e. a connection/synapse
+    """
     gene = {}
     gene['ip'] = ip
     gene['op'] = op
@@ -33,6 +44,9 @@ def create_gene(ip=None, op=None, wt=0.0, enabled=True, innov_no=0):
     return gene
 
 def create_neuron(layer=None):
+    """
+    Create a simple base neuron i.e. a node
+    """
     neuron = {}
     neuron['id'] = 0
     #neuron['in_links'] = {}
@@ -41,6 +55,9 @@ def create_neuron(layer=None):
     return neuron
 
 def create_genome():
+    """
+    Create a simple base genome i.e. a genotype
+    """
     genome = {}
     genome['genes'] = {}
     genome['neurons'] = {}
@@ -52,6 +69,12 @@ def create_genome():
     return genome
 
 def init_individual():
+    """
+    Creates an individual with all I/P, O/P fully
+    connected, and BIAS connected to all O/Ps
+
+    returns a genome
+    """
     genome = create_genome()
 
     # Create i/p and o/p neurons
@@ -103,6 +126,9 @@ def init_individual():
     return genome
 
 def create_population(size):
+    """
+    Creates a set of fully connected individuals
+    """
     pop = []
     for i in range(size):
         genome_i = init_individual()
@@ -110,17 +136,26 @@ def create_population(size):
     return pop
 
 def next_innov_no():
+    """
+    Tracker for global innovations among genes
+    """
     global innov_no
     innov_no += 1
     #generation['innov_no'] += 1
     return innov_no
 
 def next_nid(genome):
+    """
+    Tracker for next neuron id in the given genome
+    """
     nid = genome['last_neuron'] + 1
     genome['last_neuron'] = nid
     return nid
 
 def mutate(genome):
+    """
+    Given a genome, mutates it in-place
+    """
     NODE_MUTATE_PROB = 0.03
     CONN_MUTATE_PROB = 0.05
     WT_MUTATE_PROB = 0.8
@@ -210,31 +245,30 @@ def mutate_add_node(g):
     logging.debug("mutation: added a node")
 
 def crossover(mom, dad):
+    """
+    Mates 2 individuals and returns an offspring
+    """
+    # make sure the fitter parent is mom
     if mom['fitness'] < dad['fitness']:
         dad, mom = mom, dad
 
-    child = create_genome()
-    child['ip_neurons'] = mom['ip_neurons']
-    child['op_neurons'] = mom['op_neurons']
-    child['bias_neurons'] = mom['bias_neurons']
-    child['neurons'].update(mom['neurons'])
-    child['neurons'].update(dad['neurons'])
+    # create a new child and copy over all the 
+    # information except for genes
+    # from mom (the fitter parent)
+    child = copy.deepcopy(mom)
+    child['genes'] = {}
 
-    # checks with innovation numbers (which are keys of the gene dict)
+    # Copy genes from both parents to the child
+    # We use historical markings i.e. the innovation 
+    # numbers (which are keys of the genes dict)
     for gene in mom['genes']:
         if gene in dad['genes'] and random.random() < 0.5:
-            # matching gene
+            # matching gene is copied from either parents with a probability
             child['genes'][gene] = dad['genes'][gene].copy()
         else:
-            # disjoint gene, copy from fitter parent
+            # disjoint gene, copy from the fitter parent
             child['genes'][gene] = mom['genes'][gene].copy()
 
-    #for gene in dad['genes']:
-    #    if gene not in mom['genes']:
-    #        child['genes'][gene] = dad['genes'][gene].copy()
-
-    last_neuron = max([x['id'] for x in child['neurons'].values()])
-    child['last_neuron'] = last_neuron + 1
     return child
 
 def create_layers(g):
@@ -398,6 +432,12 @@ def speciate(pop, reps):
 
 
 def print_fittest(species, file=sys.stdout):
+    """
+    prints information regard the fittest individual in all species
+    to a file or stdout
+
+    returns the fittest genome
+    """
     fittest = []
     for sp in species:
         fittest.append(max([x for x in sp], key=lambda x: x['fitness']))
