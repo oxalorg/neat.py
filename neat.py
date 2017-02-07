@@ -330,83 +330,124 @@ def generate_network(g):
 
     return activate
 
+
+def adjusted_pop_size(species, pop_size):
+    """
+    Finds the adjusted, normalized population size
+    for the next generation of the given species
+    """
+    size = {}
+    sp_fitness = {}
+    avg_wt = 0
+
+    for i, sp in species.items():
+        sp_fitness[i] = sum([x['fitness'] for x in sp['members']])
+        sp_fitness[i] /= len(sp['members'])
+        avg_wt += sp_fitness[i]
+
+    avg_wt /= len(species)
+
+    for i, sp in species.items():
+        sp_size = sp_fitness[i] / avg_wt * pop_size
+        if sp_fitness[i] > avg_wt:
+            sp_size *= 1.08
+        else:
+            sp_size *= 0.92
+        size[i] = int(sp_size)
+
+    return size
+
+
+def remove_stagnant(species):
+    """
+    If the average adjusted fitness of a species
+    has not changed since the past 15 generations
+    remove it from the species pool
+    """
+    stagnant = []
+    for i, sp in species.items():
+        sp_fitness = sum([x['fitness'] for x in sp['members']])
+        if sp_fitness > sp['prev_fitness']:
+            sp['stag_count'] = 0
+        else:
+            sp['stag_count'] += 1
+
+        if sp['stag_count'] >= 15:
+            stagnant.append(i)
+
+        sp['prev_fitness'] = sp_fitness
+
+    for i in stagnant:
+        del species[i]
+
+
 def fitness_sharing(species):
     """
     Performs explicit fitness sharing in-place
     """
-    for sp in species:
-        n = len(sp)
-        for g in sp:
+    for i, sp in species.items():
+        members = sp['members']
+        n = len(members)
+        for g in members:
             g['fitness'] = g['fitness']/n
 
 
-def reproduce(species):
+def reproduce(species, pop_size):
     """
     Given a list of individuals, perform mating
     and mutation to return individuals for newer generation
     """
     new_pop = []
-    adj_ftn = []
+    adj_ftn = {}
     avg_adj_ftn = 0
 
     fitness_sharing(species)
+    remove_stagnant(species)
+    new_pop_size = adjusted_pop_size(species, pop_size)
 
-    # calculate the average adjusted fitness
-    # for each species
-    for sp in species:
-        ftn_sum = sum([x['fitness'] for x in sp])
-        adj_ftn.append(ftn_sum/len(sp))
-
-    avg_adj_ftn = sum(adj_ftn)/len(species)
-
-    # new population size must be proportional to the
-    # average adjusted fitness of each species
-    new_pop_size = []
-    for i, sp in enumerate(species):
-        size = len(sp)
-        if adj_ftn[i] > avg_adj_ftn:
-            size *= 1.08
-        else:
-            size *= 0.92
-        new_pop_size.append(size)
-
-    for i, sp in enumerate(species):
+    for i, sp in species.items():
         size = new_pop_size[i]
 
         # remove 25% most unfit members
-        sp = sorted(sp, key=lambda x: x['fitness'])[int(size)//4:]
+        mem_size = len(sp['members'])
+        members = sorted(sp['members'], key=lambda x: x['fitness'])[int(mem_size)//4:]
 
-        if len(sp) > 5:
+        if len(members) > 5:
             # If the species has atleast 5 individuals
             # copy the fittest individual as it is
-            new_pop.append(sp[-1])
+            new_pop.append(members[-1])
             size -= 1
 
-        norm_sp_size = size
-        norm_25 = norm_sp_size // 4
+        norm_size = size
+        norm_25 = norm_size // 4
 
-        while norm_sp_size > 0 and norm_sp_size > norm_25:
-            dad = random.choice(sp)
-            mom = random.choice(sp)
+        # 75% of the new population is from same species mating
+        while norm_size > 0 and norm_size > norm_25:
+            dad = random.choice(members)
+            mom = random.choice(members)
             child = crossover(dad, mom)
             mutate(child)
             new_pop.append(child)
-            norm_sp_size -= 1
-        while norm_sp_size > 0:
+            norm_size -= 1
+
+        # The remaining 25% are pure mutations
+        while norm_size > 0:
             #print("W0000000000000000000T1231231000000000000000000000000000000000000")
-            child = random.choice(sp)
+            child = random.choice(members)
             mutate(child)
             new_pop.append(child)
-            norm_sp_size -= 1
+            norm_size -= 1
 
     return new_pop
 
 xor_inputs = [(0.0, 0.0), (0.0, 1.0), (1.0, 0.0), (1.0, 1.0)]
 xor_outputs = [   (0.0,),     (1.0,),     (1.0,),     (0.0,)]
 
-def get_reps(species):
-    reps = [sp[0] for sp in species]
-    return reps
+
+def update_reps(species):
+    for i, sp in species.items():
+        sp['rep'] = sp['members'][0].copy()
+
 
 def fitness(pop):
     """
@@ -447,21 +488,34 @@ def delta_fn(g1, g2):
     delta = (c2 * d + c1 * e)/N + c3 * w
     return delta
 
-def speciate(pop, reps):
+
+def empty_species(species):
+    for sp in species.values():
+        sp['members'] = []
+
+
+def speciate(new_pop, species):
     delta_th = 3.0
-    species = [(rep, []) for rep in reps]
-    for g in pop:
-        for sp in species:
-            if delta_fn(g, sp[0]) < delta_th:
-                sp[1].append(g)
+    for g in new_pop:
+        for i, sp in species.items():
+            rep = sp['rep']
+            if delta_fn(g, rep) < delta_th:
+                sp['members'].append(g)
                 break
         else:
-            species.append((g, [g]))
+            next_sp_id = max(species.keys(), key=int)
+            species[next_sp_id+1] = { 'members': [g],
+                                        'rep': g,
+                                        'stag_count': 0,
+                                        'prev_fitness': sys.float_info.min }
 
     # kill empty species and convert to a list
-    sp_list = [x[1] for x in species if x[1]]
+    empty = []
+    for i, sp in species.items():
+        if not len(sp['members']):
+            empty.append(i)
 
-    return sp_list
+    for e in empty: del species[e]
 
 
 def print_fittest(species, file=sys.stdout):
@@ -472,8 +526,9 @@ def print_fittest(species, file=sys.stdout):
     returns the fittest genome
     """
     fittest = []
-    for sp in species:
-        fittest.append(max([x for x in sp], key=lambda x: x['fitness']))
+    for sp in species.values():
+        members = sp['members']
+        fittest.append(max([x for x in members], key=lambda x: x['fitness']))
     fit = max([x for x in fittest], key= lambda x: x['fitness'])
     print("Fitness: {:.03f}, Genes: {}, Neurons: {}".format(fit['fitness'], len(fit['genes']), len(fit['neurons'])), file=file)
     print("Species len: {}".format(len(species)), file=file)
@@ -487,29 +542,32 @@ def print_fittest(species, file=sys.stdout):
 def main(gen_size=100, pop_size=150):
     pop = create_population(pop_size)
     fitness(pop)
-    species = [pop]
-    reps = [pop[0]]
+    species = { 0: { 'members': pop,
+                      'rep': pop[0],
+                      'stag_count': 0,
+                      'prev_fitness': sys.float_info.min } }
 
     slen = []
     fp = open('log.txt', 'w')
     for gen in range(gen_size):
+        sys.stdout.write("Generation {}\r".format(gen))
+
         # primary loop for generations
         # 1. get the representatives of the species for
-        #    the current generation
         # 2. reproduce the species to get back a new population
         # 3. update the fitness value of the population
-        # 4. speciate the population into their own species
-        sys.stdout.write("Generation {}\r".format(gen))
-        reps = get_reps(species)
-        pop = reproduce(species)
+        # 4. empty the current list of species members
+        # 5. speciate the population into their own species
+        update_reps(species)
+        pop = reproduce(species, pop_size)
         fitness(pop)
-        species = speciate(pop, reps)
+        empty_species(species)
+        speciate(pop, species)
+
         slen.append(len(species))
         print_fittest(species, fp)
 
     fp.close()
-    fit = print_fittest(species)
-    pprint(fit)
     #setlen = set(slen)
     #pprint([(i, slen.count(i)) for i in setlen])
 
