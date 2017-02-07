@@ -518,7 +518,7 @@ def speciate(new_pop, species):
     for e in empty: del species[e]
 
 
-def print_fittest(species, file=sys.stdout):
+def print_fittest(species, verbose=False, compact=False, file=sys.stdout):
     """
     prints information regard the fittest individual in all species
     to a file or stdout
@@ -530,16 +530,23 @@ def print_fittest(species, file=sys.stdout):
         members = sp['members']
         fittest.append(max([x for x in members], key=lambda x: x['fitness']))
     fit = max([x for x in fittest], key= lambda x: x['fitness'])
+
+    print(verbose)
+    if verbose:
+        print("Fitness: {:.03f}, Genes: {}, Neurons: {}".format(fit['fitness'], len(fit['genes']), len(fit['neurons'])))
+        print("Species len: {}".format(len(species)))
     print("Fitness: {:.03f}, Genes: {}, Neurons: {}".format(fit['fitness'], len(fit['genes']), len(fit['neurons'])), file=file)
     print("Species len: {}".format(len(species)), file=file)
-    nw = generate_network(fit)
-    for xi, xo in zip(xor_inputs, xor_outputs):
-        output = nw(xi)
-        print("input {!r}, expected output {!r}, got {!r}".format(xi, xo, output), file=file)
+
+    if not compact:
+        nw = generate_network(fit)
+        for xi, xo in zip(xor_inputs, xor_outputs):
+            output = nw(xi)
+            print("input {!r}, expected output {!r}, got {!r}".format(xi, xo, output), file=file)
     return fit
 
 
-def main(gen_size=100, pop_size=150):
+def main(gen_size=100, pop_size=150, verbose=False):
     pop = create_population(pop_size)
     fitness(pop)
     species = { 0: { 'members': pop,
@@ -548,6 +555,7 @@ def main(gen_size=100, pop_size=150):
                       'prev_fitness': sys.float_info.min } }
 
     slen = []
+
     fp = open('log.txt', 'w')
     for gen in range(gen_size):
         sys.stdout.write("Generation {}\r".format(gen))
@@ -565,7 +573,7 @@ def main(gen_size=100, pop_size=150):
         speciate(pop, species)
 
         slen.append(len(species))
-        print_fittest(species, fp)
+        print_fittest(species, verbose=verbose, file=fp)
 
     fp.close()
     #setlen = set(slen)
@@ -588,8 +596,13 @@ def cli():
             type=int,
             default=150,
             help='Population size')
+    parser.add_argument('-v',
+            '--verbose',
+            dest='verbose',
+            action='store_true',
+            help='Prints some information to stdout')
     args = parser.parse_args()
-    main(args.generations, args.population)
+    main(args.generations, args.population, args.verbose)
 
 
 if __name__ == '__main__':
