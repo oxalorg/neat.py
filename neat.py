@@ -9,6 +9,7 @@ import logging
 import pprint
 pprint = pprint.PrettyPrinter(width=120).pprint
 from enum import Enum
+logging.basicConfig(level=logging.ERROR)
 
 # Number of i/p, o/p and bias units.
 INPUTS = 2
@@ -340,6 +341,10 @@ def adjusted_pop_size(species, pop_size):
     size = {}
     sp_fitness = {}
     avg_wt = 0
+    #total_avg
+
+    #for sp in species.values():
+        
 
     for i, sp in species.items():
         sp_fitness[i] = sum([x['adj_fitness'] for x in sp['members']])
@@ -462,26 +467,11 @@ def reproduce(species, pop_size):
 
     return new_pop
 
-xor_inputs = [(0.0, 0.0), (0.0, 1.0), (1.0, 0.0), (1.0, 1.0)]
-xor_outputs = [   (0.0,),     (1.0,),     (1.0,),     (0.0,)]
-
 
 def update_reps(species):
     for i, sp in species.items():
         sp['rep'] = sp['members'][0].copy()
 
-
-def fitness(pop):
-    """
-    Recieves a list of pop. Modify ONLY their
-    fitness values
-    """
-    for g in pop:
-        g['fitness'] = 4.0
-        nw_activate = generate_network(g)
-        for xi, xo in zip(xor_inputs, xor_outputs):
-            output = nw_activate(xi)
-            g['fitness'] -= (output[0] - xo[0]) ** 2
 
 def calc_DEW(g1, g2):
     gene1_set = {x for x in g1['genes']}
@@ -560,15 +550,15 @@ def print_fittest(species, verbose=False, compact=False, file=sys.stdout):
     print("Fitness: {:.03f}, Genes: {}, Neurons: {}".format(fit['fitness'], len(fit['genes']), len(fit['neurons'])), file=file)
     print("Species len: {}".format(len(species)), file=file)
 
-    if not compact:
-        nw = generate_network(fit)
-        for xi, xo in zip(xor_inputs, xor_outputs):
-            output = nw(xi)
-            print("input {!r}, expected output {!r}, got {!r}".format(xi, xo, output), file=file)
+#    if not compact:
+#        nw = generate_network(fit)
+#        for xi, xo in zip(xor_inputs, xor_outputs):
+#            output = nw(xi)
+#            print("input {!r}, expected output {!r}, got {!r}".format(xi, xo, output), file=file)
     return fit
 
 
-def main(gen_size=100, pop_size=150, verbose=False):
+def main(fitness=fitness, gen_size=100, pop_size=150, verbose=False):
     pop = create_population(pop_size)
     fitness(pop)
     species = { 0: { 'members': pop,
@@ -638,7 +628,6 @@ def cli():
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.ERROR)
     try:
         cli()
     except KeyboardInterrupt:
