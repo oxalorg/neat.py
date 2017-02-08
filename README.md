@@ -7,4 +7,16 @@ My small personal implementation of
 
 Work in progress.
 
-Inspired by neat-python.
+## Usage:
+
+The only thing needed by `neat.py` is a fitness function.
+
+This fitness function recieves a list of individuals (i.e. a
+population) and it is expected to alter the fitness of those
+individuals.
+
+Each individual is nothing but a dictionary (hashmap) and
+includes a `fitness` key.
+
+Check the `xor.py` file for an example. You can test it out by
+simply running `python3 xor.py`.
