@@ -354,8 +354,8 @@ def adjusted_pop_size(species, pop_size):
     avg_wt /= len(species)
 
     for i, sp in species.items():
-        sp_size = len(sp['members'])
         sp_size = sp_fitness[i] / avg_wt * pop_size
+        sp_size = len(sp['members'])
         if sp_fitness[i] > avg_wt:
             sp_size *= 1.08
         else:
@@ -365,10 +365,10 @@ def adjusted_pop_size(species, pop_size):
         #print("Expe size: ", size[i])
 
     # normalize
-#    total_size = sum(size.values())
-#    for i in size:
-#        size[i] *= pop_size / total_size
-#        size[i] = int(size[i])
+    total_size = sum(size.values())
+    for i in size:
+        size[i] *= pop_size / total_size
+        size[i] = int(size[i])
 
     return size
 
@@ -431,8 +431,8 @@ def reproduce(species, pop_size):
         mem_size = len(sp['members'])
         members = sorted(sp['members'], key=lambda x: x['fitness'])[int(mem_size)//4:]
 
-        if len(members) > 5:
-            # If the species has atleast 5 individuals
+        if len(members) > 0:
+            # If the species has atleast 1 individuals
             # copy the fittest individual as it is
             new_pop.append(members[-1])
             size -= 1
@@ -440,16 +440,18 @@ def reproduce(species, pop_size):
         norm_size = int(size)
         norm_60 = int(norm_size * 0.60)
         norm_25 = int(norm_size * 0.25)
-        norm_15 = int(norm_size * 0.15)
+        # account for loss due to rounding
+        norm_15 = norm_size - norm_60 - norm_25
+
 
         # 15% of the new population is obtained from mutations
         # of the best 10% of the species
         best_10 = members[-int(mem_size * 0.1):]
-#        for i in range(norm_15):
-#            child = copy.deepcopy(random.choice(best_10))
-#            #pprint(child)
-#            mutate(child)
-#            new_pop.append(child)
+        for i in range(norm_15):
+            child = copy.deepcopy(random.choice(best_10))
+            #pprint(child)
+            mutate(child)
+            new_pop.append(child)
 
         # 60% of the new population is from same species mating
         for i in range(norm_size):
@@ -459,11 +461,11 @@ def reproduce(species, pop_size):
             mutate(child)
             new_pop.append(child)
 
-#        # The remaining 25% are pure mutations
-#        for i in range(norm_25):
-#            child = random.choice(members).copy()
-#            mutate(child)
-#            new_pop.append(child)
+        # The remaining 25% are pure mutations
+        for i in range(norm_25):
+            child = copy.deepcopy(random.choice(members))
+            mutate(child)
+            new_pop.append(child)
 
     return new_pop
 
@@ -558,7 +560,7 @@ def print_fittest(species, verbose=False, compact=False, file=sys.stdout):
     return fit
 
 
-def main(fitness=fitness, gen_size=100, pop_size=150, verbose=False):
+def main(fitness, gen_size=100, pop_size=150, verbose=False):
     pop = create_population(pop_size)
     fitness(pop)
     species = { 0: { 'members': pop,
@@ -598,6 +600,7 @@ def main(fitness=fitness, gen_size=100, pop_size=150, verbose=False):
     fit = print_fittest(species)
     print("+===========+FITTEST SURVIOR+=============+")
     pprint(fit)
+    return fit
     #setlen = set(slen)
     #pprint([(i, slen.count(i)) for i in setlen])
 
