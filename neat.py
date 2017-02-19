@@ -560,7 +560,7 @@ def print_fittest(species, verbose=False, compact=False, file=sys.stdout):
     return fit
 
 
-def main(fitness, gen_size=100, pop_size=150, verbose=False):
+def main(fitness, gen_size=100, pop_size=150, verbose=False, fitness_thresh=None):
     pop = create_population(pop_size)
     fitness(pop)
     species = { 0: { 'members': pop,
@@ -594,7 +594,10 @@ def main(fitness, gen_size=100, pop_size=150, verbose=False):
         logging.warning("Speciation took: {:0.02f} seconds".format(t4 - t3))
 
         slen.append(len(species))
-        print_fittest(species, verbose=verbose, file=fp)
+        fittest = print_fittest(species, verbose=verbose, file=fp)
+        if fitness_thresh and abs(fittest['fitness']) > fitness_thresh:
+            print("Fitness threshold reached")
+            break
 
     fp.close()
     fit = print_fittest(species)
