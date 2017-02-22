@@ -66,11 +66,19 @@ def eval_fitness2(genomes):
 
 
 local_dir = os.path.dirname(__file__)
-winner = neat.main(fitness=eval_fitness, gen_size=999, pop_size=50, verbose=True, fitness_thresh=39.5)
+nn = neat.main(fitness=eval_fitness, gen_size=999, pop_size=50, verbose=True, fitness_thresh=39.5)
+
+pop = []
+while True:
+    try:
+        pop = next(nn)
+    except:
+        break
 
 # Show output of the most fit genome against training data.
 # print('\nBest genome:\n{!s}'.format(winner))
 # print('\nOutput:')
+winner = max(pop, key=lambda x: x['fitness'])
 winner_net = neat.generate_network(winner)
 
 
