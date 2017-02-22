@@ -16,4 +16,4 @@ def fitness(pop):
             g['fitness'] -= (output[0] - xo[0]) ** 2
 
 
-neat.main(fitness=fitness, gen_size=150, pop_size=150, verbose=True)
+neat.main(fitness=fitness, gen_size=900, pop_size=50, verbose=True, fitness_thresh=3.95)
