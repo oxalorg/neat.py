@@ -71,6 +71,22 @@ def create_genome():
     genome['fitness'] = 0.0
     return genome
 
+def copy_genome(genome):
+    """
+    Fast copy a genome
+    """
+    clone = {}
+    #clone['genes'] = genome['genes'].copy()
+    #clone['neurons'] = genome['neurons'].copy()
+    clone['genes'] = copy.deepcopy(genome['genes'])
+    clone['neurons'] = copy.deepcopy(genome['neurons'])
+    clone['ip_neurons'] = genome['ip_neurons']
+    clone['op_neurons'] = genome['op_neurons']
+    clone['bias_neurons'] = genome['bias_neurons']
+    clone['last_neuron'] = genome['last_neuron']
+    clone['fitness'] = genome['fitness']
+    return clone
+
 def init_individual():
     """
     Creates an individual with all I/P, O/P fully
@@ -258,7 +274,7 @@ def crossover(mom, dad):
     # create a new child and copy over all the 
     # information except for genes
     # from mom (the fitter parent)
-    child = copy.deepcopy(mom)
+    child = copy_genome(mom)
     child['genes'] = {}
 
     # Copy genes from both parents to the child
@@ -448,7 +464,7 @@ def reproduce(species, pop_size):
         # of the best 10% of the species
         best_10 = members[-int(mem_size * 0.1):]
         for i in range(norm_15):
-            child = copy.deepcopy(random.choice(best_10))
+            child = copy_genome(random.choice(best_10))
             #pprint(child)
             mutate(child)
             new_pop.append(child)
@@ -463,7 +479,7 @@ def reproduce(species, pop_size):
 
         # The remaining 25% are pure mutations
         for i in range(norm_25):
-            child = copy.deepcopy(random.choice(members))
+            child = copy_genome(random.choice(members))
             mutate(child)
             new_pop.append(child)
 
@@ -484,7 +500,7 @@ def calc_DEW(g1, g2):
     matching = gene1_set & gene2_set
     avg_wt = 0
     for gene in matching:
-        avg_wt += g1['genes'][gene]['wt'] - g2['genes'][gene]['wt']
+        avg_wt += abs(g1['genes'][gene]['wt'] - g2['genes'][gene]['wt'])
     avg_wt /= len(matching)
 
     non_matching = complete - matching
