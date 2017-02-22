@@ -363,15 +363,15 @@ def adjusted_pop_size(species, pop_size):
         
 
     for i, sp in species.items():
-        sp_fitness[i] = sum([x['adj_fitness'] for x in sp['members']])
+        sp_fitness[i] = sum([x['fitness'] for x in sp['members']])
         sp_fitness[i] /= len(sp['members'])
         avg_wt += sp_fitness[i]
 
     avg_wt /= len(species)
 
     for i, sp in species.items():
-        sp_size = sp_fitness[i] / avg_wt * pop_size
         sp_size = len(sp['members'])
+        sp_size = sp_fitness[i] / avg_wt * pop_size
         if sp_fitness[i] > avg_wt:
             sp_size *= 1.08
         else:
@@ -579,6 +579,7 @@ def print_fittest(species, verbose=False, compact=False, file=sys.stdout):
 def main(fitness, gen_size=100, pop_size=150, verbose=False, fitness_thresh=None):
     pop = create_population(pop_size)
     fitness(pop)
+    yield pop
     species = { 0: { 'members': pop,
                       'rep': pop[0],
                       'stag_count': 0,
@@ -601,6 +602,7 @@ def main(fitness, gen_size=100, pop_size=150, verbose=False, fitness_thresh=None
         pop = reproduce(species, pop_size)
         t2 = time.time()
         logging.warning("Reproduction took: {:0.02f} seconds".format(t2 - t1))
+        yield pop
         fitness(pop)
         t3 = time.time()
         logging.warning("Fitness took: {:0.02f} seconds".format(t3 - t2))
@@ -619,7 +621,7 @@ def main(fitness, gen_size=100, pop_size=150, verbose=False, fitness_thresh=None
     fit = print_fittest(species)
     print("+===========+FITTEST SURVIOR+=============+")
     pprint(fit)
-    return fit
+    yield fit
     #setlen = set(slen)
     #pprint([(i, slen.count(i)) for i in setlen])
 
