@@ -1,3 +1,4 @@
+import pickle
 import math
 import time
 import argparse
@@ -371,7 +372,10 @@ def adjusted_pop_size(species, pop_size):
 
     for i, sp in species.items():
         sp_size = len(sp['members'])
-        sp_size = sp_fitness[i] / avg_wt * pop_size
+        try:
+            sp_size = sp_fitness[i] / avg_wt * pop_size
+        except ZeroDivisionError:
+            sp_size = len(sp['members'])
         if sp_fitness[i] > avg_wt:
             sp_size *= 1.08
         else:
@@ -576,14 +580,20 @@ def print_fittest(species, verbose=False, compact=False, file=sys.stdout):
     return fit
 
 
-def main(fitness, gen_size=100, pop_size=150, verbose=False, fitness_thresh=None):
-    pop = create_population(pop_size)
-    fitness(pop)
-    yield pop
-    species = { 0: { 'members': pop,
-                      'rep': pop[0],
-                      'stag_count': 0,
-                      'prev_fitness': sys.float_info.min } }
+def main(fitness, gen_size=100, pop_size=150, verbose=False, fitness_thresh=None, save=None):
+    if save is True:
+        species = pickle.load(open('save.p', 'rb'))
+        pop = []
+        print("Save file loaded.")
+        print(species)
+    else:
+        pop = create_population(pop_size)
+        fitness(pop)
+        yield pop
+        species = { 0: { 'members': pop,
+                          'rep': pop[0],
+                          'stag_count': 0,
+                          'prev_fitness': sys.float_info.min } }
 
     slen = []
 
@@ -616,6 +626,7 @@ def main(fitness, gen_size=100, pop_size=150, verbose=False, fitness_thresh=None
         if fitness_thresh and abs(fittest['fitness']) > fitness_thresh:
             print("Fitness threshold reached")
             break
+        pickle.dump(species, open('save.p', 'wb'))
 
     fp.close()
     fit = print_fittest(species)
